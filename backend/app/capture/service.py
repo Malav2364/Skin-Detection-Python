@@ -147,7 +147,7 @@ class CaptureService:
         logger.info(f"Created capture {capture.id} for user {user.email}")
         
         # Queue processing job
-        from worker.tasks import process_capture
+        from backend.worker.tasks import process_capture
         process_capture.delay(str(capture.id))
         
         return capture

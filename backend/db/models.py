@@ -55,7 +55,7 @@ class User(Base):
     id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
     email = Column(String(255), unique=True, nullable=False, index=True)
     password_hash = Column(String(255), nullable=False)
-    role = Column(Enum(UserRole), default=UserRole.USER, nullable=False)
+    role = Column(Enum(UserRole, create_type=False), default=UserRole.USER, nullable=False)
     consent_flags = Column(JSONB, default={}, nullable=False)
     created_at = Column(DateTime(timezone=True), server_default=func.now())
     last_login = Column(DateTime(timezone=True), nullable=True)
@@ -63,7 +63,7 @@ class User(Base):
 
     # Relationships
     captures = relationship("Capture", back_populates="user", cascade="all, delete-orphan")
-    adjustments = relationship("UserAdjustment", back_populates="user")
+    adjustments = relationship("UserAdjustment", back_populates="user", foreign_keys="[UserAdjustment.user_id]")
 
 
 class Capture(Base):
@@ -71,8 +71,8 @@ class Capture(Base):
 
     id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
     user_id = Column(UUID(as_uuid=True), ForeignKey("users.id", ondelete="CASCADE"), nullable=False)
-    status = Column(Enum(CaptureStatus), default=CaptureStatus.QUEUED, nullable=False, index=True)
-    source = Column(Enum(CaptureSource), default=CaptureSource.WEB, nullable=False)
+    status = Column(Enum(CaptureStatus, create_type=False), default=CaptureStatus.QUEUED, nullable=False, index=True)
+    source = Column(Enum(CaptureSource, create_type=False), default=CaptureSource.WEB, nullable=False)
     store_images = Column(Boolean, default=False, nullable=False)
     created_at = Column(DateTime(timezone=True), server_default=func.now(), index=True)
     updated_at = Column(DateTime(timezone=True), server_default=func.now(), onupdate=func.now())
@@ -125,7 +125,7 @@ class Artifact(Base):
     id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
     capture_id = Column(UUID(as_uuid=True), ForeignKey("captures.id", ondelete="CASCADE"), nullable=False, index=True)
     bucket_path = Column(String(512), nullable=False)  # MinIO bucket + object key
-    artifact_type = Column(Enum(ArtifactType), nullable=False)
+    artifact_type = Column(Enum(ArtifactType, create_type=False), nullable=False)
     file_size_bytes = Column(Integer, nullable=True)
     content_type = Column(String(100), nullable=True)
     created_at = Column(DateTime(timezone=True), server_default=func.now())
@@ -174,7 +174,7 @@ class UserAdjustment(Base):
     
     # Context
     notes = Column(Text, nullable=True)
-    source = Column(Enum(AdjustmentSource), default=AdjustmentSource.USER, nullable=False)
+    source = Column(Enum(AdjustmentSource, create_type=False), default=AdjustmentSource.USER, nullable=False)
     
     # Approval workflow
     approved = Column(Boolean, default=False, nullable=False)
@@ -201,7 +201,7 @@ class AuditLog(Base):
     action = Column(String(100), nullable=False, index=True)  # e.g., "capture.upload", "user.delete"
     resource_type = Column(String(50), nullable=False)  # e.g., "capture", "user", "label"
     resource_id = Column(UUID(as_uuid=True), nullable=True)
-    metadata = Column(JSONB, default={}, nullable=False)  # Additional context
+    event_metadata = Column(JSONB, default={}, nullable=False)  # Additional context
     ip_address = Column(String(45), nullable=True)  # IPv4 or IPv6
     timestamp = Column(DateTime(timezone=True), server_default=func.now(), index=True)
 

@@ -4,7 +4,7 @@ Application configuration using Pydantic Settings
 
 from pydantic_settings import BaseSettings
 from pydantic import Field, validator
-from typing import List
+from typing import List, Union
 import os
 
 
@@ -45,7 +45,7 @@ class Settings(BaseSettings):
     JWT_REFRESH_TOKEN_EXPIRE_DAYS: int = 7
     
     # CORS
-    CORS_ORIGINS: List[str] = Field(
+    CORS_ORIGINS: Union[str, List[str]] = Field(
         default=["http://localhost:3000", "http://localhost:5173"],
         description="Allowed CORS origins"
     )
@@ -53,6 +53,8 @@ class Settings(BaseSettings):
     @validator("CORS_ORIGINS", pre=True)
     def parse_cors_origins(cls, v):
         if isinstance(v, str):
+            if not v or v.strip() == "":
+                return ["http://localhost:3000", "http://localhost:5173"]
             return [origin.strip() for origin in v.split(",")]
         return v
     
@@ -77,7 +79,7 @@ class Settings(BaseSettings):
     WORKER_PREFETCH_MULTIPLIER: int = 4
     
     # Security
-    ENCRYPTION_KEY: str = Field(..., description="32-byte encryption key for AES-256")
+    ENCRYPTION_KEY: str = Field(default="dev-encryption-key-change-in-prod-32bytes", description="32-byte encryption key for AES-256")
     ENABLE_AUDIT_LOGS: bool = True
     MAX_UPLOAD_SIZE_MB: int = 50
     

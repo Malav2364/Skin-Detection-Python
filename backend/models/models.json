@@ -1,0 +1,74 @@
+{
+    "pose": {
+        "version": "placeholder-v1.0",
+        "type": "pose_estimation",
+        "format": "placeholder",
+        "description": "Placeholder for pose estimation model (MoveNet/BlazePose)",
+        "input_shape": [
+            1,
+            256,
+            256,
+            3
+        ],
+        "output_shape": [
+            1,
+            33,
+            3
+        ],
+        "download_url": null,
+        "file_size_mb": 0,
+        "accuracy_metrics": {
+            "pck": 0.0,
+            "note": "Placeholder model - no actual inference"
+        }
+    },
+    "segmentation": {
+        "version": "placeholder-v1.0",
+        "type": "segmentation",
+        "format": "placeholder",
+        "description": "Placeholder for skin segmentation model",
+        "input_shape": [
+            1,
+            256,
+            256,
+            3
+        ],
+        "output_shape": [
+            1,
+            256,
+            256,
+            1
+        ],
+        "download_url": null,
+        "file_size_mb": 0,
+        "accuracy_metrics": {
+            "iou": 0.0,
+            "note": "Placeholder model - no actual inference"
+        }
+    },
+    "regressor": {
+        "version": "placeholder-v1.0",
+        "type": "regression",
+        "format": "placeholder",
+        "description": "Placeholder for circumference regression model",
+        "input_features": [
+            "height_cm",
+            "shoulder_width_cm",
+            "chest_width_cm",
+            "waist_width_cm",
+            "hip_width_cm"
+        ],
+        "output_features": [
+            "chest_circumference_cm",
+            "waist_circumference_cm",
+            "hip_circumference_cm",
+            "neck_circumference_cm"
+        ],
+        "download_url": null,
+        "file_size_mb": 0,
+        "accuracy_metrics": {
+            "mae_cm": 0.0,
+            "note": "Placeholder model - uses heuristic predictions"
+        }
+    }
+}

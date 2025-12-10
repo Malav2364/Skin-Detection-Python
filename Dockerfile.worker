@@ -18,7 +18,7 @@ RUN apt-get update && apt-get install -y \
     libxext6 \
     libxrender-dev \
     libgomp1 \
-    libgl1-mesa-glx \
+    libgl1 \
     && rm -rf /var/lib/apt/lists/*
 
 # Create app user
@@ -33,6 +33,13 @@ RUN pip install --no-cache-dir -r requirements.txt
 # Copy application code
 COPY backend/ ./backend/
 COPY .env.example .env
+
+# Copy alembic configuration
+COPY backend/alembic.ini ./backend/
+COPY backend/alembic/ ./backend/alembic/
+
+# Set Python path to include /app
+ENV PYTHONPATH=/app
 
 # Change ownership
 RUN chown -R worker:worker /app

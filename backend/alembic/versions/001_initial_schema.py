@@ -17,12 +17,36 @@ depends_on = None
 
 
 def upgrade() -> None:
-    # Create enum types
-    op.execute("CREATE TYPE userrole AS ENUM ('user', 'admin', 'labeler', 'partner')")
-    op.execute("CREATE TYPE capturestatus AS ENUM ('queued', 'processing', 'done', 'failed', 'edited')")
-    op.execute("CREATE TYPE capturesource AS ENUM ('web', 'mobile')")
-    op.execute("CREATE TYPE artifacttype AS ENUM ('aligned', 'mask', 'heatmap', 'raw')")
-    op.execute("CREATE TYPE adjustmentsource AS ENUM ('user', 'tailor', 'admin')")
+    # Create enum types (only if they don't exist)
+    op.execute("""DO $$ BEGIN
+        CREATE TYPE userrole AS ENUM ('user', 'admin', 'labeler', 'partner');
+    EXCEPTION
+        WHEN duplicate_object THEN null;
+    END $$;""")
+    
+    op.execute("""DO $$ BEGIN
+        CREATE TYPE capturestatus AS ENUM ('queued', 'processing', 'done', 'failed', 'edited');
+    EXCEPTION
+        WHEN duplicate_object THEN null;
+    END $$;""")
+    
+    op.execute("""DO $$ BEGIN
+        CREATE TYPE capturesource AS ENUM ('web', 'mobile');
+    EXCEPTION
+        WHEN duplicate_object THEN null;
+    END $$;""")
+    
+    op.execute("""DO $$ BEGIN
+        CREATE TYPE artifacttype AS ENUM ('aligned', 'mask', 'heatmap', 'raw');
+    EXCEPTION
+        WHEN duplicate_object THEN null;
+    END $$;""")
+    
+    op.execute("""DO $$ BEGIN
+        CREATE TYPE adjustmentsource AS ENUM ('user', 'tailor', 'admin');
+    EXCEPTION
+        WHEN duplicate_object THEN null;
+    END $$;""")
 
     # Create users table
     op.create_table(
@@ -136,7 +160,7 @@ def upgrade() -> None:
         sa.Column('action', sa.String(100), nullable=False),
         sa.Column('resource_type', sa.String(50), nullable=False),
         sa.Column('resource_id', postgresql.UUID(as_uuid=True), nullable=True),
-        sa.Column('metadata', postgresql.JSONB, nullable=False, server_default='{}'),
+        sa.Column('event_metadata', postgresql.JSONB, nullable=False, server_default='{}'),
         sa.Column('ip_address', sa.String(45), nullable=True),
         sa.Column('timestamp', sa.DateTime(timezone=True), server_default=sa.func.now()),
         sa.ForeignKeyConstraint(['actor_id'], ['users.id']),

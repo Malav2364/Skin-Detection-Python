@@ -3,7 +3,7 @@ Celery tasks for capture processing pipeline
 """
 
 from celery import Task
-from worker.celery_app import celery_app
+from backend.worker.celery_app import celery_app
 from sqlalchemy.orm import Session
 import logging
 import sys
@@ -13,7 +13,7 @@ from datetime import datetime
 # Add parent directory to path for imports
 sys.path.insert(0, os.path.dirname(os.path.dirname(__file__)))
 
-from db import init_db, Capture, CaptureMetrics, CaptureStatus
+from db import init_db, Capture, CaptureMetrics, CaptureStatus, Artifact, ArtifactType
 from app.config import get_settings
 
 logger = logging.getLogger(__name__)
@@ -68,60 +68,148 @@ def process_capture(self, capture_id: str):
             capture.processing_started_at = datetime.utcnow()
             db.commit()
             
-            # TODO: Execute pipeline stages
-            # For now, create placeholder metrics
+            # Get artifacts (images)
+            from app.storage import get_minio_client
+            from processing import (
+                load_image_from_bytes, CardDetector, ColorCalibrator,
+                SkinAnalyzer, resize_image
+            )
+            from processing.body_measurements import BodyMeasurements
+            from models import ModelManager
             
-            # Stage 1: Pre-check
-            logger.info(f"[{capture_id}] Stage 1: Pre-check")
-            # task_validate_images.delay(capture_id)
+            minio_client = get_minio_client()
             
-            # Stage 2-9: Processing stages (to be implemented)
-            logger.info(f"[{capture_id}] Processing stages 2-9 (placeholder)")
+            # Map bucket names to types (reverse of MinIO client's bucket mapping)
+            bucket_name_to_type = {
+                'raw-captures': 'raw',
+                'processed-artifacts': 'processed',
+                'models': 'models',
+                'exports': 'exports'
+            }
             
-            # Stage 10: Create metrics (placeholder)
-            logger.info(f"[{capture_id}] Stage 10: Creating metrics")
+            artifacts = db.query(Artifact).filter(
+                Artifact.capture_id == capture_id,
+                Artifact.artifact_type == ArtifactType.RAW
+            ).all()
+            
+            if not artifacts:
+                raise ValueError("No images found for processing")
+            
+            # Load images
+            images = {}
+            for artifact in artifacts:
+                # bucket_path format: "bucket-name/capture_id/image_name.jpg"
+                bucket_name, object_name = artifact.bucket_path.split('/', 1)
+                # Map bucket name to type for download
+                bucket_type = bucket_name_to_type.get(bucket_name, 'raw')
+                # Download using bucket type and full object path
+                image_bytes = minio_client.download_file(bucket_type, object_name)
+                # Extract image type from filename (front, side, portrait, reference)
+                image_type = object_name.split('/')[-1].split('.')[0]
+                images[image_type] = load_image_from_bytes(image_bytes)
+            
+            # Initialize processors
+            card_detector = CardDetector()
+            color_calibrator = ColorCalibrator()
+            skin_analyzer = SkinAnalyzer()
+            model_manager = ModelManager()
+            
+            # Stage 1-2: Card detection and color calibration
+            logger.info(f"[{capture_id}] Stage 1-2: Card detection and calibration")
+            scale = 10.0  # Default scale
+            front_image = images.get('front')
+            
+            if 'reference' in images:
+                card_result = card_detector.detect(images['reference'])
+                if card_result:
+                    scale = card_result['scale']
+                    logger.info(f"Card detected, scale: {scale:.2f} px/cm")
+                    
+                    # Extract color patches and calibrate
+                    patches = card_detector.extract_color_patches(card_result['corrected_image'])
+                    if front_image is not None:
+                        front_image = color_calibrator.calibrate(front_image, patches)
+            else:
+                # Apply gray world if no reference card
+                if front_image is not None:
+                    front_image = color_calibrator.apply_gray_world(front_image)
+            
+            # Stage 3-4: Pose estimation
+            logger.info(f"[{capture_id}] Stage 3-4: Pose estimation")
+            if front_image is not None:
+                resized_front = resize_image(front_image, 512)
+                keypoints = model_manager.predict_pose(resized_front)
+                
+                # Extract body measurements
+                body_measurements = BodyMeasurements(pixels_per_cm=scale)
+                measurements = body_measurements.extract_measurements(
+                    keypoints, 
+                    resized_front.shape[0]
+                )
+                pose_confidence = body_measurements.calculate_confidence(keypoints)
+            else:
+                raise ValueError("Front image required for processing")
+            
+            # Stage 5-6: Skin segmentation and analysis
+            logger.info(f"[{capture_id}] Stage 5-6: Skin analysis")
+            if 'portrait' in images:
+                portrait = images['portrait']
+                resized_portrait = resize_image(portrait, 512)
+                
+                # Get segmentation mask
+                skin_mask = model_manager.predict_segmentation(resized_portrait)
+                
+                # Extract skin patches
+                skin_patches = skin_analyzer.extract_skin_patches(
+                    resized_portrait,
+                    skin_mask,
+                    regions=['face', 'neck']
+                )
+                
+                # Analyze skin tone
+                if skin_patches:
+                    skin_results = skin_analyzer.analyze_multiple_patches(skin_patches)
+                else:
+                    skin_results = None
+            else:
+                skin_results = None
+            
+            # Stage 7-8: Circumference prediction
+            logger.info(f"[{capture_id}] Stage 7-8: Circumference prediction")
+            circumferences = model_manager.predict_circumferences(measurements)
+            measurements.update(circumferences)
+            
+            # Stage 9: Confidence scoring
+            logger.info(f"[{capture_id}] Stage 9: Confidence scoring")
+            overall_confidence = pose_confidence * 0.8  # Weighted by pose confidence
+            
+            # Stage 10: Create metrics
+            logger.info(f"[{capture_id}] Stage 10: Persisting results")
             metrics = CaptureMetrics(
                 capture_id=capture.id,
                 metrics_json={
-                    'original': {
-                        'height_cm': 170.0,
-                        'shoulder_width_cm': 40.0,
-                        'chest_circumference_cm': 95.0,
-                        'waist_circumference_cm': 75.0,
-                        'hip_circumference_cm': 98.0,
-                        'inseam_cm': 78.0,
-                        'torso_length_cm': 52.0,
-                        'neck_circumference_cm': 36.0
-                    },
-                    'current': {
-                        'height_cm': 170.0,
-                        'shoulder_width_cm': 40.0,
-                        'chest_circumference_cm': 95.0,
-                        'waist_circumference_cm': 75.0,
-                        'hip_circumference_cm': 98.0,
-                        'inseam_cm': 78.0,
-                        'torso_length_cm': 52.0,
-                        'neck_circumference_cm': 36.0
-                    }
+                    'original': measurements,
+                    'current': measurements
                 },
-                skin_json={
-                    'ita': 18.5,
-                    'lab': {'L': 56.0, 'a': 13.0, 'b': 16.0},
-                    'monk_bucket': 6,
-                    'undertone': 'warm'
+                skin_json=skin_results if skin_results else {
+                    'ita': None,
+                    'lab': None,
+                    'monk_bucket': None,
+                    'undertone': None
                 },
                 shape_json={
-                    'type': 'hourglass',
-                    'confidence': 0.82
+                    'type': 'unknown',
+                    'confidence': 0.0
                 },
                 quality_json={
                     'lighting_ok': True,
-                    'card_detected': False,
-                    'overall_confidence': 0.75,
-                    'warnings': ['No reference card detected']
+                    'card_detected': 'reference' in images,
+                    'overall_confidence': float(overall_confidence),
+                    'warnings': []
                 },
                 model_versions={
                     'pose': 'placeholder-v1.0',
+                    'segmentation': 'placeholder-v1.0',
                     'regressor': 'placeholder-v1.0'
                 }
             )
