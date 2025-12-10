@@ -1,4 +1,4 @@
-# Fabric Quality Analysis - Backend Image Analysis System
+# Skin color Analysis - Backend Image Analysis System
 
 Privacy-first, self-hosted image analysis system for body measurements and skin tone analysis.
 
