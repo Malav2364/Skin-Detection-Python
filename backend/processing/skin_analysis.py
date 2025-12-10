@@ -44,24 +44,22 @@ class SkinAnalyzer:
         {"hex": "#C0C0C0", "name": "Silver", "reason": "Bright neutral"},
     ]
     
-    def analyze(self, skin_patch: np.ndarray) -> Dict:
+    def analyze(
+        self, 
+        skin_patch: np.ndarray,
+        use_enhanced: bool = True,
+        reference_calibrated: bool = False
+    ) -> Dict:
         """
         Analyze skin tone from a skin patch
         
         Args:
             skin_patch: RGB image of skin region
+            use_enhanced: Use enhanced detection methods
+            reference_calibrated: Whether image was calibrated with reference card
         
         Returns:
-            Dictionary with skin analysis results:
-            {
-                'ita': float,
-                'category': str,
-                'lab': {'L': float, 'a': float, 'b': float},
-                'monk_bucket': int,
-                'undertone': str,
-                'palette': List[Dict],
-                'confidence': float
-            }
+            Dictionary with skin analysis results
         """
         # Calculate average color
         avg_color = cv2.mean(skin_patch)[:3]  # BGR
@@ -80,16 +78,37 @@ class SkinAnalyzer:
         # Map to Monk scale
         monk_bucket = map_to_monk_scale(L, a, b)
         
-        # Detect undertone
-        undertone = detect_undertone(a, b)
+        # Enhanced undertone detection
+        undertone_result = self._detect_undertone_enhanced(a, b, avg_rgb)
+        undertone = undertone_result['undertone']
+        undertone_confidence = undertone_result['confidence']
         
-        # Get color palette recommendations
-        palette = self._get_palette_recommendations(undertone)
+        # Determine color season
+        from processing.color_palette_generator import ColorPaletteGenerator
+        palette_gen = ColorPaletteGenerator()
         
-        # Calculate confidence based on patch uniformity
-        confidence = self._calculate_confidence(skin_patch)
+        season = palette_gen.determine_season(
+            ita, 
+            undertone,
+            {'L': L, 'a': a, 'b': b}
+        )
         
-        logger.info(f"Skin analysis: ITA={ita:.2f}, Monk={monk_bucket}, Undertone={undertone}")
+        # Generate professional palette
+        palette_data = palette_gen.generate_palette(season, ita, undertone)
+        
+        # Calculate overall confidence
+        patch_confidence = self._calculate_confidence(skin_patch)
+        calibration_bonus = 0.15 if reference_calibrated else 0.0
+        
+        overall_confidence = min(
+            (patch_confidence * 0.5 + 
+             undertone_confidence * 0.3 + 
+             palette_data['confidence'] * 0.2 +
+             calibration_bonus),
+            1.0
+        )
+        
+        logger.info(f"Skin analysis: ITA={ita:.2f}, Season={season}, Undertone={undertone} ({undertone_confidence:.0%})")
         
         return {
             'ita': float(ita),
@@ -101,8 +120,14 @@ class SkinAnalyzer:
             },
             'monk_bucket': int(monk_bucket),
             'undertone': undertone,
-            'palette': palette,
-            'confidence': float(confidence)
+            'undertone_confidence': float(undertone_confidence),
+            'season': season,
+            'palette': palette_data['best_colors'],
+            'neutrals': palette_data['neutrals'],
+            'avoid_colors': palette_data['avoid'],
+            'recommended_metals': palette_data['metals'],
+            'confidence': float(overall_confidence),
+            'calibrated': reference_calibrated
         }
     
     def analyze_multiple_patches(self, patches: List[np.ndarray]) -> Dict:
@@ -171,6 +196,72 @@ class SkinAnalyzer:
         confidence = max(0.0, 1.0 - (avg_std / 50.0))
         
         return confidence
+    
+    
+    def _detect_undertone_enhanced(
+        self, 
+        a: float, 
+        b: float, 
+        rgb: np.ndarray
+    ) -> Dict:
+        """
+        Enhanced undertone detection with confidence scoring
+        
+        Args:
+            a: LAB a* value
+            b: LAB b* value
+            rgb: RGB color values
+        
+        Returns:
+            Dictionary with undertone and confidence
+        """
+        factors = {}
+        
+        # Factor 1: LAB b* value (traditional method)
+        if b < -5:
+            factors['lab'] = ('cool', 0.8)
+        elif b > 5:
+            factors['lab'] = ('warm', 0.8)
+        else:
+            factors['lab'] = ('neutral', 0.6)
+        
+        # Factor 2: RGB ratios
+        r, g, b_rgb = rgb
+        if r > g and r > b_rgb:
+            if (r - g) > 15:
+                factors['rgb'] = ('warm', 0.7)
+            else:
+                factors['rgb'] = ('neutral', 0.5)
+        else:
+            factors['rgb'] = ('cool', 0.7)
+        
+        # Factor 3: LAB a* value (red/green)
+        if a > 5:
+            factors['a_value'] = ('warm', 0.6)
+        elif a < -2:
+            factors['a_value'] = ('cool', 0.6)
+        else:
+            factors['a_value'] = ('neutral', 0.5)
+        
+        # Weighted voting
+        votes = {'warm': 0, 'cool': 0, 'neutral': 0}
+        total_weight = 0
+        
+        for factor, (undertone, confidence) in factors.items():
+            votes[undertone] += confidence
+            total_weight += confidence
+        
+        # Determine winner
+        winner = max(votes, key=votes.get)
+        confidence = votes[winner] / total_weight if total_weight > 0 else 0.5
+        
+        logger.debug(f"Undertone factors: {factors}, Result: {winner} ({confidence:.0%})")
+        
+        return {
+            'undertone': winner,
+            'confidence': confidence,
+            'factors': factors
+        }
     
     def _get_palette_recommendations(self, undertone: str) -> List[Dict]:
         """Get color palette recommendations based on undertone"""

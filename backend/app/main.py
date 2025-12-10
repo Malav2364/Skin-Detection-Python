@@ -75,10 +75,10 @@ def create_app() -> FastAPI:
         lifespan=lifespan
     )
     
-    # CORS Middleware
+    # CORS Middleware - Allow file:// protocol (null origin)
     app.add_middleware(
         CORSMiddleware,
-        allow_origins=settings.CORS_ORIGINS,
+        allow_origins=["*"],  # Allow all origins for testing
         allow_credentials=True,
         allow_methods=["*"],
         allow_headers=["*"],
@@ -155,12 +155,18 @@ def create_app() -> FastAPI:
     # Include routers
     from app.auth.router import router as auth_router
     from app.capture.router import router as capture_router
+    from app.export.router import router as export_router
+    from app.dashboard.router import router as dashboard_router
+    from app.visualization.router import router as visualization_router
     # from app.admin.router import router as admin_router
     # from app.partner.router import router as partner_router
     # from app.gdpr.router import router as gdpr_router
     
     app.include_router(auth_router, prefix="/api/v1/auth", tags=["Authentication"])
     app.include_router(capture_router, prefix="/api/v1/capture", tags=["Capture"])
+    app.include_router(export_router, prefix="/api/v1", tags=["Export"])
+    app.include_router(dashboard_router, prefix="/api/v1", tags=["Dashboard"])
+    app.include_router(visualization_router, prefix="/api/v1", tags=["Visualization"])
     # app.include_router(admin_router, prefix="/api/v1/admin", tags=["Admin"])
     # app.include_router(partner_router, prefix="/api/v1/partner", tags=["Partner"])
     # app.include_router(gdpr_router, prefix="/api/v1/me", tags=["GDPR"])

@@ -46,8 +46,8 @@ class Settings(BaseSettings):
     
     # CORS
     CORS_ORIGINS: Union[str, List[str]] = Field(
-        default=["http://localhost:3000", "http://localhost:5173"],
-        description="Allowed CORS origins"
+        default='["http://localhost:3000", "http://localhost:8080", "null"]',
+        description="Allowed CORS origins (JSON array or comma-separated)"
     )
     
     @validator("CORS_ORIGINS", pre=True)
